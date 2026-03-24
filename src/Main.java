@@ -1,3 +1,5 @@
+import java.util.ArrayList;
+import java.util.List;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -10,68 +12,72 @@ abstract class Room {
         this.price = price;
     }
 
-    public String getType() {
-        return type;
-    }
+    public String getType() { return type; }
+    public double getPrice() { return price; }
 
-    public double getPrice() {
-        return price;
+    public void displayInfo() {
+        System.out.println("Room: " + type + " | Price: $" + price);
     }
 }
 
-class SingleRoom extends Room {
-    public SingleRoom() {
-        super("Single", 100.0);
-    }
-}
-
-class DoubleRoom extends Room {
-    public DoubleRoom() {
-        super("Double", 180.0);
-    }
-}
+class SingleRoom extends Room { public SingleRoom() { super("Single", 100.0); } }
+class DoubleRoom extends Room { public DoubleRoom() { super("Double", 180.0); } }
 
 class RoomInventory {
-    private Map<String, Integer> inventory;
+    private Map<String, Integer> counts = new HashMap<>();
 
-    public RoomInventory() {
-        inventory = new HashMap<>();
+    public void addRooms(String type, int count) { counts.put(type, count); }
+
+    public int getCount(String type) {
+        return counts.getOrDefault(type, 0);
     }
 
-    public void addRoomType(String type, int count) {
-        inventory.put(type, count);
+    public List<String> getAllRoomTypes() {
+        return new ArrayList<>(counts.keySet());
+    }
+}
+
+class SearchService {
+    private RoomInventory inventory;
+    private List<Room> roomTemplates;
+
+    public SearchService(RoomInventory inventory) {
+        this.inventory = inventory;
+        this.roomTemplates = new ArrayList<>();
+        roomTemplates.add(new SingleRoom());
+        roomTemplates.add(new DoubleRoom());
     }
 
-    public int getAvailability(String type) {
-        return inventory.getOrDefault(type, 0);
-    }
+    public void searchAvailableRooms() {
+        System.out.println("--- Search Results: Available Rooms ---");
+        boolean found = false;
 
-    public void updateAvailability(String type, int change) {
-        if (inventory.containsKey(type)) {
-            inventory.put(type, inventory.get(type) + change);
+        for (Room room : roomTemplates) {
+            int available = inventory.getCount(room.getType());
+
+            if (available > 0) {
+                room.displayInfo();
+                System.out.println("Status: " + available + " units left.");
+                System.out.println("------------------------------------");
+                found = true;
+            }
         }
-    }
 
-    public void displayInventory() {
-        System.out.println("--- Current Room Inventory ---");
-        for (Map.Entry<String, Integer> entry : inventory.entrySet()) {
-            System.out.println(entry.getKey() + " Rooms: " + entry.getValue());
+        if (!found) {
+            System.out.println("No rooms currently available.");
         }
     }
 }
 
- class BookmystayApp {
+ class BookmystatApp {
     public static void main(String[] args) {
         RoomInventory hotelInventory = new RoomInventory();
+        hotelInventory.addRooms("Single", 5);
+        hotelInventory.addRooms("Double", 0); // Sold out
 
-        hotelInventory.addRoomType("Single", 10);
-        hotelInventory.addRoomType("Double", 5);
+        SearchService searchService = new SearchService(hotelInventory);
 
-        hotelInventory.displayInventory();
-
-        System.out.println("\nUpdating inventory: 1 Single room booked.");
-        hotelInventory.updateAvailability("Single", -1);
-
-        hotelInventory.displayInventory();
+        // Guest initiates search
+        searchService.searchAvailableRooms();
     }
 }
