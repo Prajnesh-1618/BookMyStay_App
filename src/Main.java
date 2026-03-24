@@ -1,102 +1,77 @@
 import java.util.*;
 
-// --- Core Room Logic (UC2) ---
-abstract class Room {
-    private String type;
-    private double price;
-
-    public Room(String type, double price) {
-        this.type = type;
-        this.price = price;
+// Custom Exception
+class InvalidBookingException extends Exception {
+    public InvalidBookingException(String message) {
+        super(message);
     }
-
-    public String getType() { return type; }
-    public double getPrice() { return price; }
 }
 
-class SingleRoom extends Room { public SingleRoom() { super("Single", 100.0); } }
-class DoubleRoom extends Room { public DoubleRoom() { super("Double", 180.0); } }
+// Booking System
+class BookingSystem {
+    private Map<String, Integer> inventory = new HashMap<>();
+    private List<String> history = new ArrayList<>();
 
-// --- Inventory Management (UC3 & UC4) ---
-class RoomInventory {
-    private Map<String, Integer> counts = new HashMap<>();
-
-    public void addRooms(String type, int count) { counts.put(type, count); }
-
-    public int getCount(String type) {
-        return counts.getOrDefault(type, 0);
+    // Add room type
+    public void addRoomType(String type, int count) {
+        inventory.put(type, inventory.getOrDefault(type, 0) + count);
     }
 
-    public void updateAvailability(String type, int change) {
-        if (counts.containsKey(type)) {
-            counts.put(type, counts.get(type) + change);
+    // Process booking
+    public void processBooking(String bookingId, String type, int qty)
+            throws InvalidBookingException {
+
+        if (!inventory.containsKey(type)) {
+            throw new InvalidBookingException("Room type '" + type + "' does not exist.");
         }
-    }
-}
 
-// --- Request Handling (UC5) ---
-class ReservationRequest {
-    private String guestName;
-    private String roomType;
+        int available = inventory.get(type);
 
-    public ReservationRequest(String guestName, String roomType) {
-        this.guestName = guestName;
-        this.roomType = roomType;
-    }
-
-    public String getGuestName() { return guestName; }
-    public String getRoomType() { return roomType; }
-}
-
-// --- Allocation Logic (UC6) ---
-class BookingService {
-    private RoomInventory inventory;
-    private Set<String> allocatedRoomIDs;
-
-    public BookingService(RoomInventory inventory) {
-        this.inventory = inventory;
-        this.allocatedRoomIDs = new HashSet<>();
-    }
-
-    public void processQueue(Queue<ReservationRequest> queue) {
-        System.out.println("--- Processing Reservations (FIFO) ---");
-        while (!queue.isEmpty()) {
-            ReservationRequest request = queue.poll();
-            String type = request.getRoomType();
-
-            if (inventory.getCount(type) > 0) {
-                // Generate Unique ID and update inventory
-                String id = type.substring(0, 1).toUpperCase() + "-" + System.nanoTime() % 1000;
-                allocatedRoomIDs.add(id);
-                inventory.updateAvailability(type, -1);
-
-                System.out.println("SUCCESS: " + request.getGuestName() + " assigned to " + id);
-            } else {
-                System.out.println("FAILED: No " + type + " rooms left for " + request.getGuestName());
-            }
+        if (qty > available) {
+            throw new InvalidBookingException(
+                    "Not enough rooms available. Requested: " + qty + ", Available: " + available);
         }
+
+        // Deduct inventory
+        inventory.put(type, available - qty);
+
+        // Save history
+        history.add("ID: " + bookingId + " | Room: " + type + " | Qty: " + qty);
+
+        System.out.println("Success: Booking " + bookingId + " confirmed!");
+    }
+
+    // Show booking history
+    public void showHistory() {
+        System.out.println("\n--- Current Booking History ---");
+        for (String record : history) {
+            System.out.println(record);
+        }
+
+        int total = inventory.values().stream().mapToInt(Integer::intValue).sum();
+        System.out.println("Remaining Inventory: " + total);
     }
 }
 
-// --- Entry Point ---
+// Main Class (ONLY public class)
  class BookmystayApp {
     public static void main(String[] args) {
-        // 1. Initialize Inventory
-        RoomInventory inventory = new RoomInventory();
-        inventory.addRooms("Single", 2);
-        inventory.addRooms("Double", 1);
 
-        // 2. Setup Booking Queue (FIFO)
-        Queue<ReservationRequest> queue = new LinkedList<>();
-        queue.add(new ReservationRequest("Alice", "Single"));
-        queue.add(new ReservationRequest("Bob", "Double"));
-        queue.add(new ReservationRequest("Charlie", "Double")); // Should fail (only 1 Double exists)
-        queue.add(new ReservationRequest("Diana", "Single"));
+        BookingSystem system = new BookingSystem();
 
-        // 3. Run Allocation Service
-        BookingService service = new BookingService(inventory);
-        service.processQueue(queue);
+        // Setup inventory
+        system.addRoomType("Standard", 5);
+        system.addRoomType("Deluxe", 3);
+        system.addRoomType("Penthouse", 2);
 
-        System.out.println("\nProcess Complete.");
+        try {
+            system.processBooking("BK001", "Standard", 2);
+            system.processBooking("BK002", "Penthouse", 1);
+            system.processBooking("BK003", "Standard", 3); // valid now
+        } catch (InvalidBookingException e) {
+            System.err.println("Error: " + e.getMessage());
+        }
+
+        system.showHistory();
     }
 }
