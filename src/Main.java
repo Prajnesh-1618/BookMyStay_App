@@ -1,83 +1,61 @@
-import java.util.ArrayList;
-import java.util.List;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.LinkedList;
+import java.util.Queue;
 
-abstract class Room {
-    private String type;
-    private double price;
+class ReservationRequest {
+    private String guestName;
+    private String roomType;
 
-    public Room(String type, double price) {
-        this.type = type;
-        this.price = price;
+    public ReservationRequest(String guestName, String roomType) {
+        this.guestName = guestName;
+        this.roomType = roomType;
     }
 
-    public String getType() { return type; }
-    public double getPrice() { return price; }
-
-    public void displayInfo() {
-        System.out.println("Room: " + type + " | Price: $" + price);
+    @Override
+    public String toString() {
+        return "Request [Guest: " + guestName + ", Room Type: " + roomType + "]";
     }
 }
 
-class SingleRoom extends Room { public SingleRoom() { super("Single", 100.0); } }
-class DoubleRoom extends Room { public DoubleRoom() { super("Double", 180.0); } }
+class BookingQueueManager {
+    private Queue<ReservationRequest> requestQueue;
 
-class RoomInventory {
-    private Map<String, Integer> counts = new HashMap<>();
-
-    public void addRooms(String type, int count) { counts.put(type, count); }
-
-    public int getCount(String type) {
-        return counts.getOrDefault(type, 0);
+    public BookingQueueManager() {
+        this.requestQueue = new LinkedList<>();
     }
 
-    public List<String> getAllRoomTypes() {
-        return new ArrayList<>(counts.keySet());
-    }
-}
-
-class SearchService {
-    private RoomInventory inventory;
-    private List<Room> roomTemplates;
-
-    public SearchService(RoomInventory inventory) {
-        this.inventory = inventory;
-        this.roomTemplates = new ArrayList<>();
-        roomTemplates.add(new SingleRoom());
-        roomTemplates.add(new DoubleRoom());
+    public void addRequest(ReservationRequest request) {
+        requestQueue.add(request);
+        System.out.println("Added to queue: " + request);
     }
 
-    public void searchAvailableRooms() {
-        System.out.println("--- Search Results: Available Rooms ---");
-        boolean found = false;
-
-        for (Room room : roomTemplates) {
-            int available = inventory.getCount(room.getType());
-
-            if (available > 0) {
-                room.displayInfo();
-                System.out.println("Status: " + available + " units left.");
-                System.out.println("------------------------------------");
-                found = true;
+    public void displayQueue() {
+        System.out.println("\n--- Current Booking Queue (FIFO Order) ---");
+        if (requestQueue.isEmpty()) {
+            System.out.println("Queue is empty.");
+        } else {
+            for (ReservationRequest req : requestQueue) {
+                System.out.println(req);
             }
         }
+    }
 
-        if (!found) {
-            System.out.println("No rooms currently available.");
-        }
+    public ReservationRequest nextRequest() {
+        return requestQueue.peek();
     }
 }
 
- class BookmystatApp {
+ class BookmystayApp {
     public static void main(String[] args) {
-        RoomInventory hotelInventory = new RoomInventory();
-        hotelInventory.addRooms("Single", 5);
-        hotelInventory.addRooms("Double", 0); // Sold out
+        BookingQueueManager queueManager = new BookingQueueManager();
 
-        SearchService searchService = new SearchService(hotelInventory);
+        // Simulating simultaneous requests arriving at different times
+        queueManager.addRequest(new ReservationRequest("Alice", "Single"));
+        queueManager.addRequest(new ReservationRequest("Bob", "Double"));
+        queueManager.addRequest(new ReservationRequest("Charlie", "Single"));
 
-        // Guest initiates search
-        searchService.searchAvailableRooms();
+        // Displaying the preserved arrival order
+        queueManager.displayQueue();
+
+        System.out.println("\nNext request to be processed: " + queueManager.nextRequest());
     }
 }
