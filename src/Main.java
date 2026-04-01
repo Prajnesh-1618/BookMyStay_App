@@ -1,94 +1,74 @@
-import java.util.*;
+import java.io.*;
+import java.util.ArrayList;
+import java.util.List;
 
-// --- Domain Model ---
-class Reservation {
-    private String id;
-    private String roomType;
-    private boolean isCancelled;
+// --- Domain Model (Must be Serializable) ---
+class SystemState implements Serializable {
+    private static final long serialVersionUID = 1L;
+    public int availableRooms;
+    public List<String> bookingHistory;
 
-    public Reservation(String id, String roomType) {
-        this.id = id;
-        this.roomType = roomType;
-        this.isCancelled = false;
-    }
-
-    public String getId() { return id; }
-    public boolean isCancelled() { return isCancelled; }
-    public void setCancelled(boolean cancelled) { isCancelled = cancelled; }
-
-    @Override
-    public String toString() {
-        return String.format("ID: %s | Room: %s | Status: %s",
-                id, roomType, (isCancelled ? "CANCELLED" : "CONFIRMED"));
+    public SystemState(int rooms, List<String> history) {
+        this.availableRooms = rooms;
+        this.bookingHistory = history;
     }
 }
 
-// --- Cancellation & Rollback Service ---
-class BookingService {
-    private int inventoryCount = 5;
-    private Map<String, Reservation> reservations = new HashMap<>();
-    // Stack tracks released room IDs for LIFO rollback logic
-    private Stack<String> releasedRooms = new Stack<>();
+// --- Persistence Service ---
+class PersistenceService {
+    private static final String FILE_NAME = "hotel_data.ser";
 
-    public void createBooking(String id, String type) {
-        if (inventoryCount > 0) {
-            Reservation res = new Reservation(id, type);
-            reservations.put(id, res);
-            inventoryCount--;
-            System.out.println("Confirmed: " + id);
+    public void saveState(int rooms, List<String> history) {
+        try (ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream(FILE_NAME))) {
+            SystemState state = new SystemState(rooms, history);
+            oos.writeObject(state);
+            System.out.println(">> System state saved successfully to " + FILE_NAME);
+        } catch (IOException e) {
+            System.err.println("Error saving state: " + e.getMessage());
         }
     }
 
-    public void cancelBooking(String bookingId) {
-        System.out.println("\nAttempting to cancel: " + bookingId);
-
-        // 1. Validation: Does it exist?
-        Reservation res = reservations.get(bookingId);
-        if (res == null || res.isCancelled()) {
-            System.out.println("Error: Cancellation failed. Booking invalid or already cancelled.");
-            return;
+    public SystemState loadState() {
+        File file = new File(FILE_NAME);
+        if (!file.exists()) {
+            System.out.println(">> No saved state found. Starting fresh.");
+            return null;
         }
 
-        // 2. State Reversal
-        res.setCancelled(true);
-        inventoryCount++; // Restore inventory
-
-        // 3. Rollback Structure (Stack)
-        // Simulating the room ID associated with this booking being returned
-        String roomId = "ROOM-" + bookingId.substring(2);
-        releasedRooms.push(roomId);
-
-        System.out.println("Success: Inventory restored. Room " + roomId + " added to rollback stack.");
-    }
-
-    public void showStatus() {
-        System.out.println("\n--- Current System State ---");
-        System.out.println("Available Inventory: " + inventoryCount);
-        System.out.println("Released Rooms (Stack): " + releasedRooms);
-        reservations.values().forEach(System.out::println);
-        System.out.println("----------------------------\n");
+        try (ObjectInputStream ois = new ObjectInputStream(new FileInputStream(FILE_NAME))) {
+            System.out.println(">> Recovery successful! Restoring previous state...");
+            return (SystemState) ois.readObject();
+        } catch (IOException | ClassNotFoundException e) {
+            System.err.println("Error recovering state: " + e.getMessage());
+            return null;
+        }
     }
 }
 
  class BookmystayApp {
     public static void main(String[] args) {
-        BookingService service = new BookingService();
+        PersistenceService persistence = new PersistenceService();
 
-        // Setup: Create some bookings
-        service.createBooking("BK101", "Deluxe");
-        service.createBooking("BK102", "Standard");
+        // 1. System Startup / Recovery
+        SystemState recovered = persistence.loadState();
+        int currentRooms = (recovered != null) ? recovered.availableRooms : 10;
+        List<String> history = (recovered != null) ? recovered.bookingHistory : new ArrayList<>();
 
-        service.showStatus();
+        System.out.println("Current Inventory: " + currentRooms);
+        System.out.println("Current History Size: " + history.size());
 
-        // Test Case: Valid Cancellation
-        service.cancelBooking("BK102");
+        // 2. Simulate some activity
+        System.out.println("\nProcessing new booking...");
+        if (currentRooms > 0) {
+            currentRooms--;
+            history.add("Booking_" + System.currentTimeMillis());
+        }
 
-        // Test Case: Invalid Cancellation (Already cancelled)
-        service.cancelBooking("BK102");
+        // 3. System Shutdown / Persistence
+        System.out.println("\nShutting down...");
+        persistence.saveState(currentRooms, history);
 
-        // Test Case: Invalid Cancellation (Non-existent)
-        service.cancelBooking("BK999");
-
-        service.showStatus();
+        System.out.println("Final State - Rooms: " + currentRooms + ", History: " + history.size());
+        System.out.println("(Run the program again to see the values persist!)");
     }
 }
