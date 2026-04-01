@@ -1,76 +1,125 @@
-import java.io.*;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.*;
+import java.util.concurrent.*;
 
-// --- Domain Model (Must be Serializable) ---
-class SystemState implements Serializable {
-    private static final long serialVersionUID = 1L;
-    public int availableRooms;
-    public List<String> bookingHistory;
+// Booking Request Class
+class BookingRequest {
+    private String guestName;
+    private int roomsRequested;
 
-    public SystemState(int rooms, List<String> history) {
+    public BookingRequest(String guestName, int roomsRequested) {
+        this.guestName = guestName;
+        this.roomsRequested = roomsRequested;
+    }
+
+    public String getGuestName() {
+        return guestName;
+    }
+
+    public int getRoomsRequested() {
+        return roomsRequested;
+    }
+}
+
+// Shared Inventory (Thread Safe)
+class RoomInventory {
+    private int availableRooms;
+
+    public RoomInventory(int rooms) {
         this.availableRooms = rooms;
-        this.bookingHistory = history;
-    }
-}
-
-// --- Persistence Service ---
-class PersistenceService {
-    private static final String FILE_NAME = "hotel_data.ser";
-
-    public void saveState(int rooms, List<String> history) {
-        try (ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream(FILE_NAME))) {
-            SystemState state = new SystemState(rooms, history);
-            oos.writeObject(state);
-            System.out.println(">> System state saved successfully to " + FILE_NAME);
-        } catch (IOException e) {
-            System.err.println("Error saving state: " + e.getMessage());
-        }
     }
 
-    public SystemState loadState() {
-        File file = new File(FILE_NAME);
-        if (!file.exists()) {
-            System.out.println(">> No saved state found. Starting fresh.");
-            return null;
-        }
-
-        try (ObjectInputStream ois = new ObjectInputStream(new FileInputStream(FILE_NAME))) {
-            System.out.println(">> Recovery successful! Restoring previous state...");
-            return (SystemState) ois.readObject();
-        } catch (IOException | ClassNotFoundException e) {
-            System.err.println("Error recovering state: " + e.getMessage());
-            return null;
+    // Critical Section
+    public synchronized boolean allocateRooms(int rooms) {
+        if (availableRooms >= rooms) {
+            System.out.println(Thread.currentThread().getName() +
+                    " allocating " + rooms + " rooms...");
+            availableRooms -= rooms;
+            System.out.println("Remaining rooms: " + availableRooms);
+            return true;
+        } else {
+            System.out.println(Thread.currentThread().getName() +
+                    " failed (Not enough rooms)");
+            return false;
         }
     }
 }
 
- class BookmystayApp {
+// Booking Processor (Thread)
+class BookingProcessor implements Runnable {
+    private Queue<BookingRequest> bookingQueue;
+    private RoomInventory inventory;
 
+    public BookingProcessor(Queue<BookingRequest> bookingQueue, RoomInventory inventory) {
+        this.bookingQueue = bookingQueue;
+        this.inventory = inventory;
+    }
+
+    @Override
+    public void run() {
+        while (true) {
+            BookingRequest request;
+
+            // Synchronize queue access
+            synchronized (bookingQueue) {
+                if (bookingQueue.isEmpty()) {
+                    break;
+                }
+                request = bookingQueue.poll();
+            }
+
+            if (request != null) {
+                System.out.println(Thread.currentThread().getName() +
+                        " processing booking for " + request.getGuestName());
+
+                inventory.allocateRooms(request.getRoomsRequested());
+
+                try {
+                    Thread.sleep(100); // simulate delay
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+            }
+        }
+    }
+}
+
+// Main Class
+ class BookmystayApp{
 
     public static void main(String[] args) {
-        PersistenceService persistence = new PersistenceService();
 
-        // 1. System Startup / Recovery
-        SystemState recovered = persistence.loadState();
-        int currentRooms = (recovered != null) ? recovered.availableRooms : 10;
-        List<String> history = (recovered != null) ? recovered.bookingHistory : new ArrayList<>();
+        // Shared Queue
+        Queue<BookingRequest> bookingQueue = new LinkedList<>();
 
-        System.out.println("Current Inventory: " + currentRooms);
-        System.out.println("Current History Size: " + history.size());
+        // Add booking requests
+        bookingQueue.add(new BookingRequest("Alice", 2));
+        bookingQueue.add(new BookingRequest("Bob", 3));
+        bookingQueue.add(new BookingRequest("Charlie", 4));
+        bookingQueue.add(new BookingRequest("David", 2));
+        bookingQueue.add(new BookingRequest("Eve", 1));
 
-        // 2. Simulate some activity
-        System.out.println("\nProcessing new booking...");
-        if (currentRooms > 0) {
-            currentRooms--;
-            history.add("Booking_" + System.currentTimeMillis());
+        // Shared Inventory
+        RoomInventory inventory = new RoomInventory(7);
+
+        // Create Threads
+        Thread t1 = new Thread(new BookingProcessor(bookingQueue, inventory), "Thread-1");
+        Thread t2 = new Thread(new BookingProcessor(bookingQueue, inventory), "Thread-2");
+        Thread t3 = new Thread(new BookingProcessor(bookingQueue, inventory), "Thread-3");
+
+        // Start Threads
+        t1.start();
+        t2.start();
+        t3.start();
+
+        // Wait for completion
+        try {
+            t1.join();
+            t2.join();
+            t3.join();
+        } catch (InterruptedException e) {
+            e.printStackTrace();
         }
 
-        // 3. System Shutdown / Persistence
-        System.out.println("\nShutting down...");
-        persistence.saveState(currentRooms, history);
-
-        System.out.println("Final State - Rooms: " + currentRooms + ", History: " + history.size());
-        System.out.println("(Run the program again to see the values persist!)");
+        System.out.println("\nAll bookings processed safely!");
     }
 }
