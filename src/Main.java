@@ -46,6 +46,8 @@ class PersistenceService {
 }
 
  class BookmystayApp {
+
+
     public static void main(String[] args) {
         PersistenceService persistence = new PersistenceService();
 
